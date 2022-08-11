@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define COBS_TERMINATOR 0x00
+
 size_t cobs_encode(const uint8_t * restrict input, size_t length, uint8_t * restrict output);
 size_t cobs_decode(const uint8_t * restrict input, size_t length, uint8_t * restrict output);
 
