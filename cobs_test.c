@@ -45,23 +45,23 @@
 
 #define ROUNDTRIP_TEST_RUNNER( input, length ) \
     do { \
-        size_t encoded_buffer_length = (length) + (length) / 254 + 2; \
-        uint8_t *encoded_buffer = malloc(encoded_buffer_length); \
+        size_t working_buffer_length = (length) + (length) / 254 + 2; \
+        uint8_t *working_buffer = malloc(working_buffer_length); \
         uint8_t *decoded_buffer = malloc(length + 1); \
-        memset( encoded_buffer, MARKER_BYTE, encoded_buffer_length ); \
+        memset( working_buffer, MARKER_BYTE, working_buffer_length ); \
         decoded_buffer[length] = MARKER_BYTE; \
 \
-        size_t encoded_length = cobs_encode( input, length, encoded_buffer ); \
+        size_t encoded_length = cobs_encode( input, length, working_buffer ); \
         ASSERT_LTE_LUINT(encoded_length, length + (length)/254 + 1); \
-        ASSERT_EQUAL_UINT8_HEX( encoded_buffer[encoded_length], MARKER_BYTE ); \
-        ASSERT_EQUAL_UINT8_HEX( encoded_buffer[encoded_buffer_length - 1], MARKER_BYTE ); \
+        ASSERT_EQUAL_UINT8_HEX( working_buffer[encoded_length], MARKER_BYTE ); \
+        ASSERT_EQUAL_UINT8_HEX( working_buffer[working_buffer_length - 1], MARKER_BYTE ); \
 \
-        size_t decoded_length = cobs_decode( encoded_buffer, encoded_length, decoded_buffer ); \
+        size_t decoded_length = cobs_decode( working_buffer, encoded_length, decoded_buffer ); \
 \
 /*      printf("Original:" ); \
         for( size_t i = 0; i < length; i++ ) printf(" %02X", (input)[i] ); \
         printf("\nEncoded:" ); \
-        for( size_t i = 0; i < encoded_buffer_length; i++ ) printf(" %02X", encoded_buffer[i] ); \
+        for( size_t i = 0; i < working_buffer_length; i++ ) printf(" %02X", working_buffer[i] ); \
         printf("\nDecoded:" ); \
         for( size_t i = 0; i < length; i++ ) printf(" %02X", decoded_buffer[i] ); \
         printf("\n" ); */\
@@ -69,7 +69,7 @@
         ASSERT_EQUAL_MEM( decoded_buffer, input, length ); \
         ASSERT_EQUAL_UINT8_HEX( decoded_buffer[length], MARKER_BYTE ); \
 \
-        free(encoded_buffer); /* Not run if the tests fail, oh well */ \
+        free(working_buffer); /* Not run if the tests fail, oh well */ \
         free(decoded_buffer); \
 \
         return true; \
@@ -79,36 +79,50 @@
 #define MAX_TEST_SIZE 260		
 
 static unsigned int test_count = 0;
-static uint8_t encoded_buffer[MAX_TEST_SIZE];
+static uint8_t working_buffer[MAX_TEST_SIZE];
 
 #define SETUP_TEST 	\
 	do {	\
 		test_count++;	\
-		memset(encoded_buffer, MARKER_BYTE, sizeof(encoded_buffer));	\
+		memset(working_buffer, MARKER_BYTE, sizeof(working_buffer));	\
 	} while(0)
 
 
-#define FWD_TEST(p_test_data, td_size, p_expected_buffer, ed_size) \
-	size_t encoded_length = cobs_encode( p_test_data, td_size, encoded_buffer ); \
-	ASSERT_EQUAL_LUINT( encoded_length, ed_size - 1); \
-	ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, ed_size ); \
-	for (uint16_t i = ed_size; i < MAX_TEST_SIZE; i++) \
+#define FWD_TEST	\
+	size_t encoded_length = cobs_encode( test_data, sizeof(test_data), working_buffer ); \
+	ASSERT_EQUAL_LUINT( encoded_length, sizeof(expected) ); \
+	ASSERT_EQUAL_MEM( working_buffer, expected, sizeof(expected) ); \
+	for (uint16_t i = sizeof(expected); i < MAX_TEST_SIZE; i++) \
 	{	\
-		if (encoded_buffer[i] != MARKER_BYTE)	\
+		if (working_buffer[i] != MARKER_BYTE)	\
 		{	\
-			printf("Failed: encoding overwrote buffer at pos %d in %s", __func__, i); \
+			printf("Failed: encoding overwrote buffer at pos %d in %s\n", i, __func__); \
 			return false; \
 		}	\
 	}
 
+#define REV_TEST	\
+	memset(working_buffer, MARKER_BYTE, sizeof(working_buffer));	\
+	size_t decoded_length = cobs_decode( expected, sizeof(expected), working_buffer ); \
+	ASSERT_EQUAL_LUINT( decoded_length, sizeof(test_data)); \
+	ASSERT_EQUAL_MEM( working_buffer, test_data, sizeof(test_data) );	\
+	for (uint16_t i = sizeof(test_data); i < MAX_TEST_SIZE; i++) \
+	{	\
+		if (working_buffer[i] != MARKER_BYTE)	\
+		{	\
+			printf("Failed: decoding overwrote buffer at pos %d in %s\n", i, __func__); \
+			return false; \
+		}	\
+	}
 
 // Wikipedia Example 1
 bool test_single_null( void )
 {	
 	SETUP_TEST;
-    uint8_t buffer[] = { 0 };
-    uint8_t expected_buffer[] = { 1, 1, MARKER_BYTE };
-	FWD_TEST(buffer, sizeof(buffer), expected_buffer, sizeof(expected_buffer));
+    uint8_t test_data[] = { 0 };
+    uint8_t expected[] = { 1, 1 };
+	FWD_TEST;
+	REV_TEST;
 	return true;
 }
 
@@ -116,9 +130,10 @@ bool test_single_null( void )
 bool test_double_null( void )
 {	
 	SETUP_TEST;
-    uint8_t buffer[] = { 0, 0 };
-    uint8_t expected_buffer[] = { 1, 1, 1, MARKER_BYTE };
-	FWD_TEST(buffer, sizeof(buffer), expected_buffer, sizeof(expected_buffer));
+    uint8_t test_data[] = { 0, 0 };
+    uint8_t expected[] = { 1, 1, 1 };
+	FWD_TEST;
+	REV_TEST;
 	return true;
 }
 
@@ -126,57 +141,40 @@ bool test_double_null( void )
 bool test_hex1( void )
 {
 	SETUP_TEST;
-    uint8_t buffer[] = { 1 };
-    uint8_t expected_buffer[] = { 2, 1, MARKER_BYTE };
-
-    size_t encoded_length = cobs_encode( buffer, sizeof(buffer), encoded_buffer );
-
-    ASSERT_EQUAL_LUINT( encoded_length, 2 );
-    ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, sizeof(expected_buffer) );
-
+    uint8_t test_data[] = { 1 };
+    uint8_t expected[] = { 2, 1 };
+	FWD_TEST;
+	REV_TEST;
     return true;
 }
 
 bool test_cobs_encode_short_with_null(void) // Wikipedia Example 3
 {
 	SETUP_TEST;
-	uint8_t buffer[] = { 0x11, 0x22, 0x00, 0x33 };
-	uint8_t expected_buffer[] = { 0x03, 0x11, 0x22, 0x02, 0x33, MARKER_BYTE };
-	
-	size_t encoded_length = cobs_encode( buffer, sizeof(buffer), encoded_buffer );
-	
-	ASSERT_EQUAL_LUINT( encoded_length, 5 );
-    ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, sizeof(expected_buffer) );
-	
+	uint8_t test_data[] = { 0x11, 0x22, 0x00, 0x33 };
+	uint8_t expected[] = { 0x03, 0x11, 0x22, 0x02, 0x33 };
+	FWD_TEST;
+	REV_TEST;
 	return true;
 }
 
 bool test_cobs_encode_short_no_null(void) // Wikipedia Example 4
 {
 	SETUP_TEST;
-	uint8_t buffer[] = { 0x11, 0x22, 0x33, 0x44 };
-	uint8_t expected_buffer[] = { 0x05, 0x11, 0x22, 0x33, 0x44, MARKER_BYTE };
-	
-	size_t encoded_length = cobs_encode( buffer, sizeof(buffer), encoded_buffer );
-	
-	ASSERT_EQUAL_LUINT( encoded_length, 5 );
-    ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, sizeof(expected_buffer) );
-	
+	uint8_t test_data[] = { 0x11, 0x22, 0x33, 0x44 };
+	uint8_t expected[] = { 0x05, 0x11, 0x22, 0x33, 0x44 };
+	FWD_TEST;
+	REV_TEST;
 	return true;
 }
 
 bool test_cobs_encode_short_successive_nulls(void) // Wikipedia Example 5
 {
 	SETUP_TEST;
-	uint8_t buffer[] = { 0x11, 0x00, 0x00, 0x00 };
-	uint8_t encoded_buffer[] = { MARKER_BYTE, MARKER_BYTE, MARKER_BYTE, MARKER_BYTE, MARKER_BYTE };
-	uint8_t expected_buffer[] = { 0x02, 0x11, 0x01, 0x01, 0x01, MARKER_BYTE };
-	
-	size_t encoded_length = cobs_encode( buffer, sizeof(buffer), encoded_buffer );
-	
-	ASSERT_EQUAL_LUINT( encoded_length, 5 );
-    ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, sizeof(encoded_buffer) );
-	
+	uint8_t test_data[] = { 0x11, 0x00, 0x00, 0x00 };
+	uint8_t expected[] = { 0x02, 0x11, 0x01, 0x01, 0x01 };
+	FWD_TEST;
+	REV_TEST;
 	return true;
 }
 
@@ -198,7 +196,7 @@ bool test_cobs_encode_254_bytes_no_null(void) // Wikipedia Example 6
     }
 	expected_cobs[255] = MARKER_BYTE;
     
-	uint8_t encoded_buffer[255];
+	uint8_t working_buffer[255];
 	for( int i = 0; i <= 254; i++ )
     {
         expected_cobs[i] = i;
@@ -217,7 +215,7 @@ bool test_255_bytes_null_end( void )
     }
     buffer[sizeof(buffer) - 1] = 0;
 
-    uint8_t encoded_buffer[257];
+    uint8_t working_buffer[257];
     uint8_t expected_buffer[257];
 
     expected_buffer[0] = 0xFF;
@@ -228,11 +226,11 @@ bool test_255_bytes_null_end( void )
     expected_buffer[256] = 1;
     expected_buffer[257] = MARKER_BYTE;
 
-    encoded_buffer[256] = MARKER_BYTE;
+    working_buffer[256] = MARKER_BYTE;
 
-    size_t encoded_length = cobs_encode( buffer, sizeof(buffer), encoded_buffer );
+    size_t encoded_length = cobs_encode( buffer, sizeof(buffer), working_buffer );
 
-    ASSERT_EQUAL_MEM( encoded_buffer, expected_buffer, sizeof(encoded_buffer) );
+    ASSERT_EQUAL_MEM( working_buffer, expected_buffer, sizeof(working_buffer) );
     ASSERT_EQUAL_LUINT( encoded_length, 256 );
 
     return true;
