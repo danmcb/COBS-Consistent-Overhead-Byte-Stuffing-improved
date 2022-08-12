@@ -255,6 +255,63 @@ bool test_cobs_encode_254_bytes_trailing_null_one(void) // Wikipedia Example 11
 	return true;
 }
 
+// We're done testing the correctness of encode/decode. WHat remains now is to check that the decoder 
+// returns zero when passed an invalid COBS packet - i.e. when the header (and/or the bytes it links
+// to) extend beyond the length of the input.
+
+bool test_utils_cobs_decode_header_too_large_1(void)
+{
+	SETUP_TEST;
+	 // header byte 0x2d = 45 => overrun
+	uint8_t input[] = 		{0x2d,0x51,0x32,0x30,0x32,0x31,0x30,0x31, //8
+					   		 0x38,0x20,0x31,0x38,0x3a,0x32,0x39,0x3a, //16
+					   		 0x32,0x39,0x20,0x2e,0x20,0x53,0x74,0x61, //24
+					   		 0x72,0x74,0x20,0x6d,0x65,0x61,0x73,0x75, //32
+					   		 0x72,0x65,0x6d,0x65,0x6e,0x74,0x20,0x5b, //40
+					   		 0x39,0x5d,0x0a,0x12};                    //44 bytes
+
+	uint8_t output[sizeof(input)];
+	uint16_t res = cobs_decode(input, sizeof(input), output);
+	ASSERT_EQUAL_LUINT(0, res); // signals that decoding failed
+	return true;
+}
+
+bool test_utils_cobs_decode_header_too_large_2(void)
+{
+	SETUP_TEST;
+	 // header byte 0x0f (15), byte 15 = 0xff (255) => overrun
+	uint8_t input[] = 		{0x0f,0x51,0x32,0x30,0x32,0x31,0x30,0x31, //8
+					   		 0x38,0x20,0x31,0x38,0x3a,0x32,0x39,0xff, //16
+					   		 0x32,0x39,0x20,0x2e,0x20,0x53,0x74,0x61, //24
+					   		 0x72,0x74,0x20,0x6d,0x65,0x61,0x73,0x75, //32
+					   		 0x72,0x65,0x6d,0x65,0x6e,0x74,0x20,0x5b, //40
+					   		 0x39,0x5d,0x0a,0x12};                    //44 bytes
+
+	uint16_t res = cobs_decode(input, sizeof(input), working_buffer);
+	ASSERT_EQUAL_LUINT(0, res); // signals that decoding failed
+	return true;
+}
+
+bool test_utils_cobs_fail_on_null(void)
+{
+	SETUP_TEST;
+	// decoding should fail if a NULL byte is encountered anywhere in the encoded COBS
+	// we start with a small frame that decodes OK.
+	uint8_t good_input[] = { 0x03, 0x11, 0x22, 0x03, 0x33, 0x44};
+	uint16_t res = cobs_decode(good_input, sizeof(good_input), working_buffer);
+	ASSERT_EQUAL_LUINT(5, res); // decoded OK
+	// now we check that setting any byte to 0x00 fails
+	uint8_t bad_input[sizeof(good_input)];
+	for (uint8_t i = 0; i < sizeof(good_input); i++)
+	{
+		memcpy(bad_input, good_input, sizeof(good_input));
+		bad_input[i] = 0;
+		res = cobs_decode(bad_input,sizeof(good_input),working_buffer);
+		ASSERT_EQUAL_LUINT(0, res); // fail
+	}
+	return true;
+}
+
 int main(int argc, char*argv[])
 {
     test_single_null();
@@ -269,6 +326,11 @@ int main(int argc, char*argv[])
 	test_cobs_encode_255_bytes_no_null();
 	test_cobs_encode_254_bytes_trailing_null();
 	test_cobs_encode_254_bytes_trailing_null_one();
+	
+	test_utils_cobs_decode_header_too_large_1();
+	test_utils_cobs_decode_header_too_large_2();
+	test_utils_cobs_fail_on_null();
+	
 	
 	printf("ran %d COBS unit tests\n", test_count);
 
