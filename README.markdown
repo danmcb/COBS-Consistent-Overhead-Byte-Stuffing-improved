@@ -14,6 +14,10 @@ This implementation improves on the original in several ways:
 
 This repo keeps the Jaques F implementation in the file `old_cobs.c` and a trivial build script is provided which builds both versions and allows the test cases to be run on each. ( `COBS_ENCODE_ADD_TERMINATOR` should of course NOT be defined when testing the Jaques F version.)
 
+### Original Cheshire/Baker version
+
+An implementation of the original implementation by the designers of COBS is also included. This version is slightly different as it does not return any value, therefore the output buffer should be memset to 0 before encode/decode. The test suite has been adapted for it, and also appears to reveal bugs in the same places as the Jaques F implementation.
+
 ## About COBS
 
 [Consistent Overhead Byte Stuffing](http://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing) is an encoding that removes all 0 bytes from arbitrary binary data. The encoded data consists only of bytes with values from 0x01 to 0xFF. This is useful for preparing data for transmission over a serial link (RS-232 or RS-485 for example), as the 0 byte can be used to unambiguously indicate packet boundaries. COBS also has the advantage of adding very little overhead (at least 1 byte, plus up to an additional byte per 254 bytes of data). For messages smaller than 254 bytes, the overhead is constant.
