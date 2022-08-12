@@ -32,10 +32,12 @@ size_t cobs_encode(const uint8_t * restrict input, size_t length, uint8_t * rest
     }
     if (block_flag == false) FINISH_BLOCK(code, false);
 	
-    //*code_ptr = 0;                                          // append the NULL byte
-    //return code_ptr - start_of_output + 1;                  // return position of the NULL
-	
+#ifdef COBS_ENCODE_ADD_TERMINATOR
+    *code_ptr = 0;                                          // append the NULL byte
+    return code_ptr - start_of_output + 1;                  // return position of the NULL
+#else
     return code_ptr - start_of_output;                        // return position not including
+#endif
 }
 
 size_t cobs_decode(const uint8_t * restrict input, size_t length, uint8_t * restrict output)

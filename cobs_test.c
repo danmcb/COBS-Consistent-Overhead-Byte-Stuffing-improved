@@ -35,7 +35,21 @@
 		memset(working_buffer, MARKER_BYTE, sizeof(working_buffer));	\
 	} while(0)
 
-
+#ifdef COBS_ENCODE_ADD_TERMINATOR
+#define FWD_TEST	\
+	size_t encoded_length = cobs_encode( test_data, sizeof(test_data), working_buffer ); \
+	ASSERT_EQUAL_LUINT( encoded_length, sizeof(expected) + 1); \
+	ASSERT_EQUAL_MEM( "FWD", working_buffer, expected, sizeof(expected) ); \
+	ASSERT_EQUAL_LUINT( working_buffer[encoded_length - 1], 0 );	\
+	for (uint16_t i = sizeof(expected) + 1; i < MAX_TEST_SIZE; i++) \
+	{	\
+		if (working_buffer[i] != MARKER_BYTE)	\
+		{	\
+			printf("Failed: encoding overwrote buffer at pos %d in %s\n", i, __func__); \
+			return false; \
+		}	\
+	}
+#else
 #define FWD_TEST	\
 	size_t encoded_length = cobs_encode( test_data, sizeof(test_data), working_buffer ); \
 	ASSERT_EQUAL_LUINT( encoded_length, sizeof(expected) ); \
@@ -48,6 +62,7 @@
 			return false; \
 		}	\
 	}
+#endif
 
 #define REV_TEST	\
 	memset(working_buffer, MARKER_BYTE, sizeof(working_buffer));	\
